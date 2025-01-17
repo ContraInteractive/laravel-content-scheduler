@@ -1,0 +1,25 @@
+{
+    "name": "contrainteractive/content-scheduler",
+    "license": "MIT",
+    "require": {
+        "laravel/framework": "^10.0|^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "ContraInteractive\\ContentScheduler\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "ContraInteractive\\ContentScheduler\\Providers\\ContentSchedulerServiceProvider"
+            ]
+        }
+    },
+    "authors": [
+        {
+            "name": "Tim Shultis",
+            "email": "alloyking@gmail.com"
+        }
+    ]
+}
