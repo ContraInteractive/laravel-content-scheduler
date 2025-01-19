@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-class CreateSchedulesTable extends Migration
+return new class extends Migration
 {
     /**
      * Run the migrations.
@@ -32,6 +32,7 @@ class CreateSchedulesTable extends Migration
             // Indexes for better performance
             $table->index(['schedulable_id', 'schedulable_type']);
             $table->index('scheduled_at');
+            $table->unique(['schedulable_id', 'schedulable_type']);
         });
     }
 
@@ -42,4 +43,4 @@ class CreateSchedulesTable extends Migration
     {
         Schema::dropIfExists('schedules');
     }
-}
+};

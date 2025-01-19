@@ -8,7 +8,7 @@ use Illuminate\Queue\SerializesModels;
 use ContraInteractive\ContentScheduler\Models\ContentSchedule as Schedule;
 use Illuminate\Database\Eloquent\Model;
 
-class ScheduleCreated
+class ScheduleUpdated
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 

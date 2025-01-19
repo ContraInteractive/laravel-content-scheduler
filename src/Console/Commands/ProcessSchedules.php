@@ -3,10 +3,11 @@
 namespace ContraInteractive\ContentScheduler\Console\Commands;
 
 use Illuminate\Console\Command;
-use App\Models\Schedule;
-use App\Enums\ScheduleStatus;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
+use ContraInteractive\ContentScheduler\Models\ContentSchedule as Schedule;
+use ContraInteractive\ContentScheduler\Enums\ScheduleStatus;
+use Illuminate\Database\Eloquent\Model;
 
 class ProcessSchedules extends Command
 {
@@ -112,10 +113,11 @@ class ProcessSchedules extends Command
      */
     protected function publishContent(Schedule $schedule)
     {
-        $schedulable = $schedule->schedulable;
+        /** @var Model $model */
+        $model = $schedule->schedulable;
 
-        if ($schedulable && method_exists($schedulable, 'publish')) {
-            $schedulable->publish();
+        if ($model && method_exists($model, 'publish')) {
+            $model->publish();
         } else {
             // Handle if the method does not exist
             Log::warning("Schedulable model for Schedule ID: {$schedule->id} does not have a publish method.");
@@ -129,10 +131,11 @@ class ProcessSchedules extends Command
      */
     protected function unpublishContent(Schedule $schedule)
     {
-        $schedulable = $schedule->schedulable;
+        /** @var Model $model */
+        $model = $schedule->schedulable;
 
-        if ($schedulable && method_exists($schedulable, 'unpublish')) {
-            $schedulable->unpublish();
+        if ($model && method_exists($model, 'unpublish')) {
+            $model->unpublish();
         } else {
             // Handle if the method does not exist
             Log::warning("Schedulable model for Schedule ID: {$schedule->id} does not have an unpublish method.");

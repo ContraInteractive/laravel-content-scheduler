@@ -37,8 +37,29 @@ trait HasScheduling
      * @param Schedule $schedule
      * @return bool
      */
-    public function cancelSchedule(Schedule $schedule): bool
+    public function cancelSchedule(): bool
     {
-        return Scheduler::cancelSchedule($schedule);
+        return Scheduler::cancelSchedule($this);
     }
+
+    /**
+     * published the model immediately.
+     *
+     * @return bool
+     */
+    public function publish()
+    {
+        return Scheduler::publish($this);
+    }
+
+    /**
+     * Unpublish the model immediately.
+     *
+     * @return bool
+     */
+    public function unpublish()
+    {
+        return Scheduler::unpublish($this);
+    }
+
 }

@@ -2,90 +2,129 @@
 
 namespace ContraInteractive\ContentScheduler\Services;
 
-use Illuminate\Database\Eloquent\Model;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\Log;
 use ContraInteractive\ContentScheduler\Enums\ScheduleStatus;
-use ContraInteractive\ContentScheduler\Models\ContentSchedule as Schedule;
-use ContraInteractive\ContentScheduler\Events\ScheduleCreated;
 use ContraInteractive\ContentScheduler\Events\ScheduleCanceled;
+use ContraInteractive\ContentScheduler\Events\ScheduleCreated;
+use ContraInteractive\ContentScheduler\Events\SchedulePublished;
+use ContraInteractive\ContentScheduler\Events\ScheduleUnpublished;
+use ContraInteractive\ContentScheduler\Models\ContentSchedule as Schedule;
+use Illuminate\Database\Eloquent\Model;
+use ContraInteractive\ContentScheduler\Events\ScheduleUpdated;
 
 class SchedulingService
 {
     /**
-     * Schedule a model for publishing.
+     * Schedule a model to be published at a certain time, with an optional unpublish time.
      *
-     * @param Model $model The schedulable model instance.
-     * @param Carbon|string $publishAt The datetime to publish.
-     * @param Carbon|string|null $unpublishAt The datetime to unpublish (optional).
-     * @param string|null $notes Any additional notes (optional).
-     * @return Schedule
+     * @param  Model  $model  The model instance to schedule.
+     * @param  Carbon|string  $publishAt  Date/time to publish the model.
+     * @param  Carbon|string|null  $unpublishAt  Date/time to unpublish the model (optional).
+     * @param  string|null  $notes  Additional notes or comments (optional).
+     *
+     * @throws \InvalidArgumentException If $unpublishAt is not after $publishAt.
      */
-    public function schedulePublish(Model $model, $publishAt, $unpublishAt = null, string $notes = null): Schedule
-    {
+    public function schedulePublish(
+        Model $model,
+        $publishAt,
+        $unpublishAt = null,
+        ?string $notes = null
+    ): Schedule {
         $publishAt = $this->parseDateTime($publishAt);
+
         if ($unpublishAt) {
             $unpublishAt = $this->parseDateTime($unpublishAt);
+
             if ($unpublishAt->lessThanOrEqualTo($publishAt)) {
-                throw new \InvalidArgumentException('Unpublish time must be after publish time.');
+                throw new \InvalidArgumentException(
+                    'Unpublish time must be strictly after the publish time.'
+                );
             }
         }
 
-        $schedule =  $model->schedules()->create([
-            'scheduled_at' => $this->parseDateTime($publishAt),
-            'published_at' => $this->parseDateTime($publishAt),
-            'unpublished_at' => $unpublishAt ? $this->parseDateTime($unpublishAt) : null,
-            'status' => ScheduleStatus::SCHEDULED,
-            'notes' => $notes,
-        ]);
+        $schedule = $model->schedule()->first();
 
-        event(new ScheduleCreated($schedule));
+        if($schedule){
+            // update schedule
+            $schedule->update([
+                'scheduled_at' => $publishAt,
+                'published_at' => null,
+                'unpublished_at' => $unpublishAt,
+                'status' => ScheduleStatus::SCHEDULED,
+                'notes' => $notes,
+            ]);
+
+            $schedule->refresh();
+
+            event(new ScheduleUpdated($model, $schedule));
+
+        } else {
+
+            $schedule = $model->schedule()->create([
+                'scheduled_at' => $publishAt,
+                'published_at' => null,
+                'unpublished_at' => $unpublishAt,
+                'status' => ScheduleStatus::SCHEDULED,
+                'notes' => $notes,
+            ]);
+
+            event(new ScheduleCreated($model, $schedule));
+        }
+
 
         return $schedule;
     }
 
+
     /**
-     * Schedule a model for unpublishing.
+     * Schedule a model to be unpublished at a certain time.
      *
-     * @param Model $model The schedulable model instance.
-     * @param Carbon|string $unpublishAt The datetime to unpublish.
-     * @param string|null $notes Any additional notes (optional).
-     * @return Schedule
+     * @param  Model  $model  The model instance to schedule.
+     * @param  Carbon|string  $unpublishAt  Date/time to unpublish the model.
+     * @param  string|null  $notes  Additional notes or comments (optional).
      */
-    public function scheduleUnpublish(Model $model, $unpublishAt, string $notes = null): Schedule
-    {
-        return $model->schedules()->create([
-            'unpublished_at' => $this->parseDateTime($unpublishAt),
-            'status' => ScheduleStatus::SCHEDULED, // Or another appropriate status
+    public function scheduleUnpublish(
+        Model $model,
+        $unpublishAt,
+        ?string $notes = null
+    ): Schedule {
+        $unpublishAt = $this->parseDateTime($unpublishAt);
+
+        return $model->schedule()->create([
+            'unpublished_at' => null,
+            'status' => ScheduleStatus::SCHEDULED,
             'notes' => $notes,
         ]);
     }
 
     /**
-     * Parse the datetime input to a Carbon instance.
+     * Convert a mixed date/time input into a Carbon instance.
      *
-     * @param Carbon|string $dateTime
-     * @return Carbon
+     * @param  Carbon|string  $dateTime
      */
     protected function parseDateTime($dateTime): Carbon
     {
-        return $dateTime instanceof Carbon ? $dateTime : Carbon::parse($dateTime);
+        return $dateTime instanceof Carbon
+            ? $dateTime
+            : Carbon::parse($dateTime);
     }
 
     /**
-     * Cancel a scheduled item.
+     * Cancel a schedule if it is currently marked as SCHEDULED.
      *
-     * @param Schedule $schedule
-     * @return bool
+     * @param  Schedule  $schedule  The schedule to be canceled.
+     * @return bool True on success; otherwise, false.
      */
-    public function cancelSchedule(Schedule $schedule): bool
+    public function cancelSchedule(Model $model): bool
     {
+        $schedule = $model->schedule()->first();
+
         if ($schedule->status === ScheduleStatus::SCHEDULED) {
             $schedule->status = ScheduleStatus::CANCELED;
             $saved = $schedule->save();
 
-            if($saved) {
-                event(new ScheduleCanceled($schedule));
+            if ($saved) {
+                event(new ScheduleCanceled($model, $schedule));
             }
 
             return $saved;
@@ -95,36 +134,62 @@ class SchedulingService
     }
 
     /**
-     * Publish the associated content.
+     * Publish a model immediately. If no schedule exists, create one. Otherwise, just update the status.
      *
-     * @param Schedule $schedule
+     * @param  Model  $model  The model to be published.
+     * @return bool True on success; otherwise, false.
      */
-    public function publish(Schedule $schedule): bool
+    public function publish(Model $model): bool
     {
+        $schedule = $model->schedule()->first();
+
+        // If no schedule is found, create one for "now"
+        if (! $schedule) {
+            $schedule = $this->schedulePublish($model, now());
+        }
+
+        // If already published, there's nothing to do
+        if ($schedule->status === ScheduleStatus::PUBLISHED) {
+            return true;
+        }
+
         $schedule->status = ScheduleStatus::PUBLISHED;
         $schedule->published_at = now();
         $saved = $schedule->save();
 
-        if($saved) {
-            event(new SchedulePublished($schedule));
+        if ($saved) {
+            event(new SchedulePublished($model, $schedule));
         }
 
         return $saved;
     }
 
     /**
-     * Unpublish the associated content.
+     * Unpublish a model by updating its schedule to UNPUBLISHED status.
      *
-     * @param Schedule $schedule
+     * @param  Model  $model  The model to be unpublished.
+     * @return bool True on success; otherwise, false.
      */
-    public function unpublish(Schedule $schedule): bool
+    public function unpublish(Model $model): bool
     {
+        $schedule = $model->schedule()->first();
+
+        // Cannot unpublish if no schedule exists
+        if (! $schedule) {
+            return false;
+        }
+
+        // If already unpublished, there's nothing to do
+        if ($schedule->status === ScheduleStatus::UNPUBLISHED) {
+            return true;
+        }
+
         $schedule->status = ScheduleStatus::UNPUBLISHED;
         $schedule->unpublished_at = now();
         $saved = $schedule->save();
 
-        if($saved) {
-            event(new ScheduleUnpublished($schedule));
+        if ($saved) {
+            event(new ScheduleUnpublished($model, $schedule));
         }
 
         return $saved;
