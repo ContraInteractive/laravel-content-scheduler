@@ -34,13 +34,13 @@ class ProcessSchedules extends Command
 
         $this->info("Processing schedules at {$now->toDateTimeString()}");
 
-        // 1. Publish scheduled items
+        // 1. Publish any items that are "scheduled" and whose publish time has arrived or passed.
         $this->publishScheduledItems($now);
 
-        // 2. Unpublish published items
+        // 2. Unpublish any items that are currently "published" and whose unpublish time has arrived or passed.
         $this->unpublishPublishedItems($now);
 
-        // 3. (Optional) Handle other status transitions
+        // 3. (Optional) Handle other transitions if your business logic requires it.
         // $this->handleOtherTransitions($now);
 
         $this->info("Processing completed.");
@@ -53,18 +53,23 @@ class ProcessSchedules extends Command
     {
         $this->info("Publishing scheduled items...");
 
+        // Find schedules in SCHEDULED status that have a publish_scheduled_at <= now
         $schedules = Schedule::where('status', ScheduleStatus::SCHEDULED)
-            ->where('scheduled_at', '<=', $now)
+            ->whereNotNull('publish_scheduled_at')
+            ->where('publish_scheduled_at', '<=', $now)
             ->get();
 
         foreach ($schedules as $schedule) {
             try {
-                // Update status to published
-                $schedule->status = ScheduleStatus::PUBLISHED;
+                // Mark it actually published
+                $schedule->status       = ScheduleStatus::PUBLISHED;
                 $schedule->published_at = $now;
+                // Optionally clear the scheduled date so it doesn't trigger again:
+                // $schedule->publish_scheduled_at = null;
+
                 $schedule->save();
 
-                // Perform any additional actions, e.g., publishing the content
+                // Perform any additional actions, e.g. calling a model's publish method
                 $this->publishContent($schedule);
 
                 $this->info("Published Schedule ID: {$schedule->id}");
@@ -83,18 +88,23 @@ class ProcessSchedules extends Command
     {
         $this->info("Unpublishing published items...");
 
+        // Find schedules in PUBLISHED status that have unpublish_scheduled_at <= now
         $schedules = Schedule::where('status', ScheduleStatus::PUBLISHED)
-            ->where('unpublished_at', '<=', $now)
+            ->whereNotNull('unpublish_scheduled_at')
+            ->where('unpublish_scheduled_at', '<=', $now)
             ->get();
 
         foreach ($schedules as $schedule) {
             try {
                 // Update status to unpublished
-                $schedule->status = ScheduleStatus::UNPUBLISHED;
+                $schedule->status         = ScheduleStatus::UNPUBLISHED;
                 $schedule->unpublished_at = $now;
+                // Optionally clear the scheduled date so it doesn't trigger again:
+                // $schedule->unpublish_scheduled_at = null;
+
                 $schedule->save();
 
-                // Perform any additional actions, e.g., unpublishing the content
+                // Perform any additional actions, e.g. calling a model's unpublish method
                 $this->unpublishContent($schedule);
 
                 $this->info("Unpublished Schedule ID: {$schedule->id}");
@@ -107,9 +117,7 @@ class ProcessSchedules extends Command
     }
 
     /**
-     * Publish the associated content.
-     *
-     * @param Schedule $schedule
+     * Publish the associated content (if the model has a publish method).
      */
     protected function publishContent(Schedule $schedule)
     {
@@ -119,15 +127,12 @@ class ProcessSchedules extends Command
         if ($model && method_exists($model, 'publish')) {
             $model->publish();
         } else {
-            // Handle if the method does not exist
             Log::warning("Schedulable model for Schedule ID: {$schedule->id} does not have a publish method.");
         }
     }
 
     /**
-     * Unpublish the associated content.
-     *
-     * @param Schedule $schedule
+     * Unpublish the associated content (if the model has an unpublish method).
      */
     protected function unpublishContent(Schedule $schedule)
     {
@@ -137,18 +142,8 @@ class ProcessSchedules extends Command
         if ($model && method_exists($model, 'unpublish')) {
             $model->unpublish();
         } else {
-            // Handle if the method does not exist
             Log::warning("Schedulable model for Schedule ID: {$schedule->id} does not have an unpublish method.");
         }
     }
 
-    /**
-     * (Optional) Handle other status transitions.
-     *
-     * @param Carbon $now
-     */
-    protected function handleOtherTransitions(Carbon $now)
-    {
-        // Example: Handle canceled schedules if needed
-    }
 }

@@ -15,23 +15,31 @@ return new class extends Migration
             $table->id();
 
             // Polymorphic relationship fields
-            $table->morphs('schedulable'); // Creates 'schedulable_id' and 'schedulable_type'
+            $table->morphs('schedulable');
+            // This creates 'schedulable_id' and 'schedulable_type' columns
 
             // Scheduling fields
-            $table->timestamp('scheduled_at');
-            $table->timestamp('published_at')->nullable();
-            $table->timestamp('unpublished_at')->nullable();
+            $table->timestamp('publish_scheduled_at')->nullable();    // The intended/predicted time to publish
+            $table->timestamp('unpublish_scheduled_at')->nullable();  // The intended/predicted time to unpublish
 
+            // Actual event timestamps
+            $table->timestamp('published_at')->nullable();   // The exact time we actually published
+            $table->timestamp('unpublished_at')->nullable(); // The exact time we actually unpublished
+
+            // Status: scheduled, published, unpublished, canceled
             $table->enum('status', ['scheduled', 'published', 'unpublished', 'canceled'])
                 ->default('scheduled');
 
             $table->text('notes')->nullable();
 
-            $table->timestamps();
+            $table->timestamps(); // created_at, updated_at
 
-            // Indexes for better performance
+            // Indexes
             $table->index(['schedulable_id', 'schedulable_type']);
-            $table->index('scheduled_at');
+            $table->index('publish_scheduled_at');
+            $table->index('unpublish_scheduled_at');
+
+            // If you only want one schedule row per polymorphic model
             $table->unique(['schedulable_id', 'schedulable_type']);
         });
     }
@@ -41,6 +49,6 @@ return new class extends Migration
      */
     public function down()
     {
-        Schema::dropIfExists('schedules');
+        Schema::dropIfExists('content_schedules');
     }
 };

@@ -1,56 +1,82 @@
 <?php
 
 namespace ContraInteractive\ContentScheduler\Traits;
+
 use ContraInteractive\ContentScheduler\Models\ContentSchedule;
-use ContraInteractive\ContentScheduler\Facades\Scheduler;
+use ContraInteractive\ContentScheduler\Facades\Scheduler; // If needed
+use ContraInteractive\ContentScheduler\Enums\ScheduleStatus;
+use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Illuminate\Support\Carbon;
 
 trait Schedulable
 {
-
-    public function schedule()
+    /**
+     * Polymorphic relationship to the ContentSchedule model.
+     */
+    public function schedule(): MorphOne
     {
         return $this->morphOne(ContentSchedule::class, 'schedulable');
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | Accessors for Scheduled/Actual Dates
+    |--------------------------------------------------------------------------
+    */
+
     /**
-     * Get the 'scheduled_at' datetime.
+     * Get the scheduled publish date/time.
      */
-    public function getScheduledAt(): ?Carbon
+    public function getPublishScheduledAt(): ?Carbon
     {
-        return $this->schedule ? $this->schedule->scheduled_at : null;
+        return $this->schedule ? $this->schedule->publish_scheduled_at : null;
     }
 
     /**
-     * Get the 'published_at' datetime.
+     * Get the scheduled unpublish date/time.
      */
-    public function getPublishDate(): ?Carbon
+    public function getUnpublishScheduledAt(): ?Carbon
+    {
+        return $this->schedule ? $this->schedule->unpublish_scheduled_at : null;
+    }
+
+    /**
+     * Get the actual published_at datetime.
+     */
+    public function getPublishedAt(): ?Carbon
     {
         return $this->schedule ? $this->schedule->published_at : null;
     }
 
     /**
-     * Get the 'unpublished_at' datetime.
+     * Get the actual unpublished_at datetime.
      */
-    public function getUnpublishDate(): ?Carbon
+    public function getUnpublishedAt(): ?Carbon
     {
         return $this->schedule ? $this->schedule->unpublished_at : null;
     }
 
-    /**
-     * Is this model scheduled to be published in the future?
-     */
-    public function isScheduledForFuture(): bool
-    {
-        // For example, you might consider a future schedule to be one with
-        // a `scheduled_at` or `published_at` timestamp that is still in the future.
-        if (! $this->schedule) {
-            return false;
-        }
+    /*
+    |--------------------------------------------------------------------------
+    | Status Checks
+    |--------------------------------------------------------------------------
+    */
 
-        // You can decide whether to check `scheduled_at` or `published_at` for your "future" logic
-        return $this->schedule->scheduled_at
-            && $this->schedule->scheduled_at->isFuture();
+    /**
+     * Determine if this model has a schedule record.
+     */
+    public function hasSchedule(): bool
+    {
+        return (bool) $this->schedule;
+    }
+
+    /**
+     * Is this model currently scheduled (not yet published)?
+     */
+    public function isScheduled(): bool
+    {
+        return $this->schedule
+            && $this->schedule->status === ScheduleStatus::SCHEDULED;
     }
 
     /**
@@ -58,18 +84,114 @@ trait Schedulable
      */
     public function isPublished(): bool
     {
-        // Some apps track status in a field (e.g., 'published' or 'scheduled'),
-        // or you could assume it's published if the current time is past 'published_at'
-        if (! $this->schedule) {
+        return $this->schedule
+            && $this->schedule->status === ScheduleStatus::PUBLISHED;
+    }
+
+    /**
+     * Is this model currently unpublished?
+     */
+    public function isUnpublished(): bool
+    {
+        return $this->schedule
+            && $this->schedule->status === ScheduleStatus::UNPUBLISHED;
+    }
+
+    /**
+     * Is this model's schedule canceled?
+     */
+    public function isCanceled(): bool
+    {
+        return $this->schedule
+            && $this->schedule->status === ScheduleStatus::CANCELED;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Time-based Checks
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * Is this model scheduled to be published in the future (based on 'publish_scheduled_at')?
+     */
+    public function isScheduledForFuturePublish(): bool
+    {
+        if (! $this->schedule || ! $this->schedule->publish_scheduled_at) {
             return false;
         }
 
-        return $this->schedule->published_at
-            && $this->schedule->published_at->isPast()
-            && (
-                // No unpublish date OR unpublish date is in the future
-                ! $this->schedule->unpublished_at
-                || $this->schedule->unpublished_at->isFuture()
-            );
+        return $this->schedule->publish_scheduled_at->isFuture();
+    }
+
+    /**
+     * Is this model scheduled to be unpublished in the future (based on 'unpublish_scheduled_at')?
+     */
+    public function isScheduledForFutureUnpublish(): bool
+    {
+        if (! $this->schedule || ! $this->schedule->unpublish_scheduled_at) {
+            return false;
+        }
+
+        return $this->schedule->unpublish_scheduled_at->isFuture();
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Query Scopes
+    |--------------------------------------------------------------------------
+    | These scopes let you filter models based on schedule status.
+    | For example, MyModel::published()->get() to find all currently published ones.
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * Scope to find models that have a schedule with a given status.
+     */
+    public function scopeWhereScheduleStatus($query, string $status)
+    {
+        return $query->whereHas('schedule', function ($q) use ($status) {
+            $q->where('status', $status);
+        });
+    }
+
+    /**
+     * Scope for published models.
+     */
+    public function scopePublished($query)
+    {
+        return $query->whereHas('schedule', function ($q) {
+            $q->where('status', ScheduleStatus::PUBLISHED);
+        });
+    }
+
+    /**
+     * Scope for scheduled (but not yet published) models.
+     */
+    public function scopeScheduled($query)
+    {
+        return $query->whereHas('schedule', function ($q) {
+            $q->where('status', ScheduleStatus::SCHEDULED);
+        });
+    }
+
+    /**
+     * Scope for unpublished models.
+     */
+    public function scopeUnpublished($query)
+    {
+        return $query->whereHas('schedule', function ($q) {
+            $q->where('status', ScheduleStatus::UNPUBLISHED);
+        });
+    }
+
+    /**
+     * Scope for canceled schedules.
+     */
+    public function scopeCanceled($query)
+    {
+        return $query->whereHas('schedule', function ($q) {
+            $q->where('status', ScheduleStatus::CANCELED);
+        });
     }
 }
