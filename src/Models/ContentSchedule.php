@@ -9,9 +9,10 @@ class ContentSchedule extends Model
     protected $fillable = [
         'schedulable_id',
         'schedulable_type',
-        'scheduled_at',
         'published_at',
         'unpublished_at',
+        'publish_scheduled_at',
+        'unpublish_scheduled_at',
         'status',
         'notes',
     ];
@@ -28,9 +29,10 @@ class ContentSchedule extends Model
      * Cast attributes to native types.
      */
     protected $casts = [
-        'scheduled_at' => 'datetime',
         'published_at' => 'datetime',
         'unpublished_at' => 'datetime',
+        'publish_scheduled_at' => 'datetime',
+        'unpublish_scheduled_at' => 'datetime',
         'status' => ScheduleStatus::class, // Cast 'status' to ScheduleStatus enum
     ];
 

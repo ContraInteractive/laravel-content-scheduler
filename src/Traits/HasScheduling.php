@@ -34,7 +34,6 @@ trait HasScheduling
     /**
      * Cancel a schedule.
      *
-     * @param Schedule $schedule
      * @return bool
      */
     public function cancelSchedule(): bool
@@ -43,11 +42,22 @@ trait HasScheduling
     }
 
     /**
+     * Clear any scheduled dates for the model. but keep the status.
+     *
+     * @return bool
+     */
+
+    public function clearSchedule()
+    {
+        return Scheduler::clearSchedule($this);
+    }
+
+    /**
      * published the model immediately.
      *
      * @return bool
      */
-    public function publish()
+    public function publish(): bool
     {
         return Scheduler::publish($this);
     }
@@ -57,9 +67,11 @@ trait HasScheduling
      *
      * @return bool
      */
-    public function unpublish()
+    public function unpublish(): bool
     {
         return Scheduler::unpublish($this);
     }
+
+
 
 }
