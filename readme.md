@@ -2,7 +2,7 @@
 You can install the package via composer:
 
 ```bash
-composer require ''
+composer require 'contrainteractive/content-scheduler'
 ```
 
 Once the package is installed, you should publish the migration files and run the migration:
